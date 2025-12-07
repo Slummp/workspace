@@ -1,0 +1,631 @@
+---
+- name: Bootstrap poste Ubuntu
+  hosts: all
+  become: yes
+
+  vars:
+    # Utilisateur pour Oh My Zsh (override avec: -e omz_user=tonuser)
+    omz_user: "{{ ansible_user_id }}"
+    omz_home: "{{ (omz_user == 'root') | ternary('/root', '/home/' + omz_user) }}"
+
+    # Tous les paquets gérés directement par APT
+    base_apt_packages:
+      - build-essential
+      - curl
+      - wget
+      - zip
+      - unzip
+      - p7zip-full
+      - rar
+      - unrar
+      - gnupg
+      - dirmngr
+      - ca-certificates
+      - software-properties-common
+      - apt-transport-https
+      - htop
+      - neofetch
+      - tree
+      - jq
+      - yq
+      - rsync
+
+      # Éditeurs / outils dev
+      - emacs
+      - git
+      - gh
+      - openssh-client
+      - openssh-server
+      - sshpass
+      - gnupg2
+      - gpg-agent
+      - make
+      - cmake
+      - pkg-config
+      - python3
+      - python3-pip
+      - python3-venv
+      - default-jdk
+      - openjdk-17-jre
+      - golang
+
+      # Docker / containers / node
+      - docker.io
+      - docker-compose
+      - containerd
+      - nodejs
+      - npm
+      - yarnpkg
+      - remmina
+      - remmina-plugin-rdp
+
+      # Réseau / debug
+      - net-tools
+      - nmap
+      - wireshark
+      - tcpdump
+      - traceroute
+      - iperf3
+      - whois
+      - dnsutils
+
+      # Graphisme / multimédia
+      - playerctl
+      - inkscape
+      - gimp
+      - gpick
+      - vlc
+      - ffmpeg
+      - peek
+      - flameshot
+      - imagemagick
+
+      # 3D / libs scientifiques (choix raisonnables)
+      - openscad
+      - vtk9
+      - libopencv-dev
+      - python3-opencv
+
+      # Bureautique
+      - libreoffice
+      - libreoffice-calc
+      - libreoffice-writer
+      - libreoffice-impress
+      - libreoffice-draw
+
+      # Disques / partitions / systèmes de fichiers
+      - gnome-disk-utility
+      - gparted
+      - testdisk
+      - exfat-fuse
+      - exfatprogs
+
+      # Fonts
+      - fonts-firacode
+      - fonts-roboto
+      - fonts-noto
+      - fonts-noto-color-emoji
+      - ttf-mscorefonts-installer
+
+      # Divers desktop
+      - copyq
+      - synaptic
+      - qbittorrent
+      - sirikali
+      - pass
+      - seahorse
+
+      # Outils terminal
+      - ansible
+      - ripgrep
+      - fd-find
+      - fzf
+      - bat
+      - tig
+      - tmux
+      - zsh
+
+      # Paquets depuis dépôts externes
+      - ulauncher
+      - code
+      - discord
+      - spotify-client
+      - google-chrome-stable
+      - jellyfin
+
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+  tasks:
+    - name: Ensure /etc/apt/keyrings exists
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    # -------------------------------------------------------------------
+    # Pré-requis pour gérer les dépôts
+    # -------------------------------------------------------------------
+    - name: Install minimal prerequisites for external repositories
+      ansible.builtin.apt:
+        name:
+          - wget
+          - curl
+          - gnupg
+          - dirmngr
+          - ca-certificates
+          - software-properties-common
+          - apt-transport-https
+        state: present
+        update_cache: yes
+
+    # -------------------------------------------------------------------
+    # Virer complètement Snap (tous les snaps + snapd + répertoires)
+    # -------------------------------------------------------------------
+    - name: Vérifier si snap est présent
+      ansible.builtin.stat:
+        path: /usr/bin/snap
+      register: snap_binary
+
+    - name: Lister tous les snaps installés
+      ansible.builtin.command: snap list
+      register: snap_list
+      changed_when: false
+      when: snap_binary.stat.exists
+
+    - name: Extraire les lignes de snaps (sans l'entête)
+      ansible.builtin.set_fact:
+        snap_lines: "{{ snap_list.stdout_lines[1:] | default([]) }}"
+      when:
+        - snap_list.stdout_lines is defined
+        - snap_list.stdout_lines | length > 1
+
+    - name: Calculer la liste de tous les snaps (noms)
+      ansible.builtin.set_fact:
+        snaps_all: >-
+          {{
+            snap_lines
+            | map('split')
+            | map('first')
+            | list
+          }}
+      when:
+        - snap_lines is defined
+
+    - name: Calculer la liste des snaps de base (Notes=base)
+      ansible.builtin.set_fact:
+        snaps_base: >-
+          {{
+            snap_lines
+            | select('search', ' base$')
+            | map('split')
+            | map('first')
+            | list
+          }}
+      when:
+        - snap_lines is defined
+
+    - name: Calculer la liste des snaps snapd
+      ansible.builtin.set_fact:
+        snaps_snapd: >-
+          {{
+            snap_lines
+            | select('search', ' snapd$')
+            | map('split')
+            | map('first')
+            | list
+          }}
+      when:
+        - snap_lines is defined
+
+    - name: Calculer la liste des snaps applicatifs (non-base)
+      ansible.builtin.set_fact:
+        snaps_apps: "{{ snaps_all | difference(snaps_base | union(snaps_snapd)) }}"
+      when:
+        - snaps_all is defined
+        - snaps_snapd is defined
+        - snaps_base is defined
+
+    - name: Supprimer tous les snaps applicatifs
+      ansible.builtin.command: snap remove --purge {{ item }}
+      loop: "{{ snaps_apps | default([]) }}"
+      when:
+        - snaps_apps is defined
+
+    - name: Supprimer tous les snaps de base
+      ansible.builtin.command: snap remove --purge {{ item }}
+      loop: "{{ snaps_base | default([]) }}"
+      when:
+        - snaps_base is defined
+
+    - name: Supprimer tous les snaps snapd
+      ansible.builtin.command: snap remove --purge {{ item }}
+      loop: "{{ snaps_snapd | default([]) }}"
+      when:
+        - snaps_snapd is defined
+
+    - name: Arrêter et masquer le service snapd
+      ansible.builtin.systemd:
+        name: snapd
+        state: stopped
+        enabled: false
+        masked: true
+
+    - name: Purger complètement le paquet snapd
+      ansible.builtin.apt:
+        name: snapd
+        state: absent
+        purge: true
+        autoremove: true
+        update_cache: yes
+
+    - name: Supprimer le répertoire /snap
+      ansible.builtin.file:
+        path: /snap
+        state: absent
+
+    - name: Supprimer le répertoire /var/snap
+      ansible.builtin.file:
+        path: /var/snap
+        state: absent
+
+    - name: Supprimer le répertoire /var/lib/snapd
+      ansible.builtin.file:
+        path: /var/lib/snapd
+        state: absent
+
+    - name: Supprimer le répertoire snap dans le HOME de l utilisateur
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/snap"
+        state: absent
+
+    - name: Empêcher la réinstallation de snapd par APT
+      ansible.builtin.copy:
+        dest: /etc/apt/preferences.d/nosnap.pref
+        mode: "0644"
+        content: |
+          Package: snapd
+          Pin: release a=*
+          Pin-Priority: -10
+
+    # -------------------------------------------------------------------
+    # Thunderbird standalone
+    # -------------------------------------------------------------------
+    - name: Download latest Thunderbird tarball from Mozilla
+      ansible.builtin.get_url:
+        url: "https://download.mozilla.org/?product=thunderbird-latest&os=linux64&lang=fr"
+        dest: /tmp/thunderbird.tar.bz2
+        mode: "0644"
+
+    - name: Extract Thunderbird into /opt
+      ansible.builtin.unarchive:
+        src: /tmp/thunderbird.tar.bz2
+        dest: /opt
+        remote_src: true
+        creates: /opt/thunderbird
+      register: thunderbird_unarchive
+
+    - name: Ensure Thunderbird binary is executable
+      ansible.builtin.file:
+        path: /opt/thunderbird/thunderbird
+        mode: "0755"
+      when: thunderbird_unarchive is succeeded
+
+    - name: Create symlink in /usr/local/bin for thunderbird
+      ansible.builtin.file:
+        src: /opt/thunderbird/thunderbird
+        dest: /usr/local/bin/thunderbird
+        state: link
+
+    - name: Install Thunderbird .desktop launcher
+      ansible.builtin.copy:
+        dest: /usr/share/applications/thunderbird.desktop
+        mode: "0644"
+        content: |
+          [Desktop Entry]
+          Name=Thunderbird
+          Comment=Email, RSS and newsgroup client
+          Exec=thunderbird %u
+          Terminal=false
+          Type=Application
+          Icon=/opt/thunderbird/chrome/icons/default/default128.png
+          Categories=Network;Email;
+          MimeType=x-scheme-handler/mailto;
+          StartupWMClass=thunderbird
+
+    # -------------------------------------------------------------------
+    # Dépôt Ulauncher (PPA Agornostal)
+    # -------------------------------------------------------------------
+    - name: Download Agornostal PPA public key
+      ansible.builtin.get_url:
+        url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xFAF1020699503176"
+        dest: /etc/apt/keyrings/agornostal-ppa-keyring.asc
+        mode: "0644"
+
+    - name: Convert Agornostal key to GPG keyring
+      ansible.builtin.command: >
+        gpg --dearmor
+          -o /etc/apt/keyrings/agornostal-ppa-keyring.gpg
+          /etc/apt/keyrings/agornostal-ppa-keyring.asc
+      args:
+        creates: /etc/apt/keyrings/agornostal-ppa-keyring.gpg
+
+    - name: Add Agornostal APT repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/agornostal-ppa.list
+        mode: "0644"
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/agornostal-ppa-keyring.gpg] http://ppa.launchpad.net/agornostal/ulauncher/ubuntu {{ ansible_distribution_release }} main
+
+    # -------------------------------------------------------------------
+    # Dépôt VSCode (PPA Microsoft)
+    # -------------------------------------------------------------------
+    - name: Download Microsoft PPA public key
+      ansible.builtin.get_url:
+        url: "https://packages.microsoft.com/keys/microsoft.asc"
+        dest: /etc/apt/keyrings/microsoft-ppa-keyring.asc
+        mode: "0644"
+
+    - name: Convert Microsoft key to GPG keyring
+      ansible.builtin.command: >
+        gpg --dearmor
+          -o /etc/apt/keyrings/microsoft-ppa-keyring.gpg
+          /etc/apt/keyrings/microsoft-ppa-keyring.asc
+      args:
+        creates: /etc/apt/keyrings/microsoft-ppa-keyring.gpg
+
+    - name: Add Microsoft APT repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/microsoft-ppa.list
+        mode: "0644"
+        content: |
+          deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft-ppa-keyring.gpg] https://packages.microsoft.com/repos/code stable main
+
+    # -------------------------------------------------------------------
+    # Dépôt Discord (PPA Javinator9889)
+    # -------------------------------------------------------------------
+    - name: Download Javinator9889 PPA public key
+      ansible.builtin.get_url:
+        url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x08633B4AAAEB49FC"
+        dest: /etc/apt/keyrings/javinator9889-ppa-keyring.asc
+        mode: "0644"
+
+    - name: Convert Javinator9889 key to GPG keyring
+      ansible.builtin.command: >
+        gpg --dearmor
+          -o /etc/apt/keyrings/javinator9889-ppa-keyring.gpg
+          /etc/apt/keyrings/javinator9889-ppa-keyring.asc
+      args:
+        creates: /etc/apt/keyrings/javinator9889-ppa-keyring.gpg
+
+    - name: Add Javinator9889 APT repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/javinator9889-ppa.list
+        mode: "0644"
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/javinator9889-ppa-keyring.gpg] https://ppa.javinator9889.com all main
+
+    # -------------------------------------------------------------------
+    # Dépôt Spotify
+    # -------------------------------------------------------------------
+    - name: Download Spotify PPA public key
+      ansible.builtin.get_url:
+        url: "https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc"
+        dest: /etc/apt/keyrings/spotify-ppa-keyring.asc
+        mode: "0644"
+
+    - name: Convert Spotify key to GPG keyring
+      ansible.builtin.command: >
+        gpg --dearmor
+          -o /etc/apt/keyrings/spotify-ppa-keyring.gpg
+          /etc/apt/keyrings/spotify-ppa-keyring.asc
+      args:
+        creates: /etc/apt/keyrings/spotify-ppa-keyring.gpg
+
+    - name: Add Spotify APT repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/spotify-ppa.list
+        mode: "0644"
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/spotify-ppa-keyring.gpg] https://repository.spotify.com stable non-free
+
+    # -------------------------------------------------------------------
+    # Dépôt Google Chrome (PPA Google)
+    # -------------------------------------------------------------------
+    - name: Download Google PPA public key
+      ansible.builtin.get_url:
+        url: "https://dl.google.com/linux/linux_signing_key.pub"
+        dest: /etc/apt/keyrings/google-ppa-keyring.asc
+        mode: "0644"
+
+    - name: Convert Google key to GPG keyring
+      ansible.builtin.command: >
+        gpg --dearmor
+          -o /etc/apt/keyrings/google-ppa-keyring.gpg
+          /etc/apt/keyrings/google-ppa-keyring.asc
+      args:
+        creates: /etc/apt/keyrings/google-ppa-keyring.gpg
+
+    - name: Add Google APT repository
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/google-ppa.list
+        mode: "0644"
+        content: |
+          deb [arch=amd64 signed-by=/etc/apt/keyrings/google-ppa-keyring.gpg] https://dl.google.com/linux/chrome/deb stable main
+
+    # -------------------------------------------------------------------
+    # Jellyfin via script officiel (ajoute dépôt + installe jellyfin)
+    # -------------------------------------------------------------------
+    - name: Download Jellyfin install script
+      ansible.builtin.get_url:
+        url: "https://repo.jellyfin.org/install-debuntu.sh"
+        dest: /tmp/install-debuntu.sh
+        mode: "0755"
+
+    - name: Run Jellyfin install script
+      ansible.builtin.shell: |
+        set -e
+        /tmp/install-debuntu.sh
+      environment:
+        SKIP_CONFIRM: "1"
+      args:
+        creates: /etc/apt/sources.list.d/jellyfin.list
+
+    # -------------------------------------------------------------------
+    # Mise à jour du cache après ajout de tous les dépôts
+    # -------------------------------------------------------------------
+    - name: apt update after adding external repositories
+      ansible.builtin.apt:
+        update_cache: yes
+
+    # -------------------------------------------------------------------
+    # Accepter l’EULA des polices Microsoft
+    # -------------------------------------------------------------------
+    - name: Preseed ttf-mscorefonts-installer EULA
+      ansible.builtin.debconf:
+        name: ttf-mscorefonts-installer
+        question: "msttcorefonts/accepted-mscorefonts-eula"
+        value: "true"
+        vtype: select
+
+    # -------------------------------------------------------------------
+    # Installation de tous les paquets APT
+    # -------------------------------------------------------------------
+    - name: Install all requested APT packages
+      ansible.builtin.apt:
+        name: "{{ base_apt_packages }}"
+        state: present
+        install_recommends: yes
+
+    # -------------------------------------------------------------------
+    # Ajouter l'utilisateur au groupe docker
+    # -------------------------------------------------------------------
+    - name: Add current Ansible user to docker group
+      user:
+        name: "{{ ansible_user }}"
+        groups: docker
+        append: yes
+
+    # -------------------------------------------------------------------
+    # JDownloader2
+    # -------------------------------------------------------------------
+    - name: Create JDownloader2 directory
+      ansible.builtin.file:
+        path: /opt/jdownloader2
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download JDownloader2 install jar
+      ansible.builtin.get_url:
+        url: https://installer.jdownloader.org/JDownloader.jar
+        dest: /opt/jdownloader2/JDownloader.jar
+        mode: "0644"
+
+    - name: Create JDownloader2 launcher script
+      ansible.builtin.copy:
+        dest: /usr/local/bin/jdownloader2
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          cd /opt/jdownloader2
+          exec java -jar JDownloader.jar
+
+    - name: Create JDownloader2 desktop entry
+      ansible.builtin.copy:
+        dest: /usr/share/applications/jdownloader2.desktop
+        mode: "0644"
+        content: |
+          [Desktop Entry]
+          Name=JDownloader 2
+          Comment=Download manager
+          Exec=/usr/local/bin/jdownloader2
+          Icon=jdownloader
+          Terminal=false
+          Type=Application
+          Categories=Network;Utility;
+
+    # -------------------------------------------------------------------
+    # DroidCam (.deb officiel)
+    # -------------------------------------------------------------------
+    - name: Download DroidCam .deb
+      ansible.builtin.get_url:
+        url: https://droidcam.app/go/droidCam.client.setup.deb
+        dest: /tmp/droidcam_client_amd64.deb
+        mode: "0644"
+
+    - name: Install DroidCam client
+      ansible.builtin.apt:
+        deb: /tmp/droidcam_client_amd64.deb
+
+    # -------------------------------------------------------------------
+    # Minecraft launcher (.deb officiel)
+    # -------------------------------------------------------------------
+    - name: Download Minecraft launcher .deb
+      ansible.builtin.get_url:
+        url: https://launcher.mojang.com/download/Minecraft.deb
+        dest: /tmp/Minecraft.deb
+        mode: "0644"
+
+    - name: Install Minecraft launcher
+      ansible.builtin.apt:
+        deb: /tmp/Minecraft.deb
+
+    # -------------------------------------------------------------------
+    # Ankama Launcher (AppImage)
+    # -------------------------------------------------------------------
+    - name: Create Ankama launcher directory
+      ansible.builtin.file:
+        path: /opt/ankama-launcher
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Download Ankama Launcher AppImage (x86_64)
+      ansible.builtin.get_url:
+        url: " https://launcher.cdn.ankama.com/installers/production/Ankama%20Launcher-Setup-x86_64.AppImage"
+        dest: /opt/ankama-launcher/Ankama-Launcher.AppImage
+        mode: "0755"
+
+    - name: Create Ankama Launcher wrapper
+      ansible.builtin.copy:
+        dest: /usr/local/bin/ankama-launcher
+        mode: "0755"
+        content: |
+          #!/usr/bin/env bash
+          exec /opt/ankama-launcher/Ankama-Launcher.AppImage
+
+    - name: Create Ankama Launcher desktop entry
+      ansible.builtin.copy:
+        dest: /usr/share/applications/ankama-launcher.desktop
+        mode: "0644"
+        content: |
+          [Desktop Entry]
+          Name=Ankama Launcher
+          Comment=Launcher for Ankama games (Dofus, Wakfu, etc.)
+          Exec=/usr/local/bin/ankama-launcher
+          Icon=ankama
+          Terminal=false
+          Type=Application
+          Categories=Game;
+
+    # -------------------------------------------------------------------
+    # Zsh + Oh My Zsh
+    # -------------------------------------------------------------------
+    - name: Ensure default shell for {{ omz_user }} is zsh
+      ansible.builtin.user:
+        name: "{{ omz_user }}"
+        shell: /usr/bin/zsh
+
+    - name: Install Oh My Zsh for {{ omz_user }}
+      become: yes
+      become_user: "{{ omz_user }}"
+      ansible.builtin.shell: |
+        set -e
+        if [ ! -d "{{ omz_home }}/.oh-my-zsh" ]; then
+          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+        fi
+      args:
+        executable: /bin/bash
