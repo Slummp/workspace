@@ -326,7 +326,12 @@
     # Thunderbird standalone
     # -------------------------------------------------------------------
     - name: Download latest Thunderbird tarball from Mozilla
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://download.mozilla.org/?product=thunderbird-latest&os=linux64&lang=fr"
         dest: /tmp/thunderbird.tar.bz2
         mode: "0644"
@@ -371,7 +376,12 @@
     # Dépôt Ulauncher (PPA Agornostal)
     # -------------------------------------------------------------------
     - name: Download Agornostal PPA public key
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xFAF1020699503176"
         dest: /etc/apt/keyrings/agornostal-ppa-keyring.asc
         mode: "0644"
@@ -397,7 +407,12 @@
     # son postinst détecte ce dépôt et n'en ajoute pas un second.
     # -------------------------------------------------------------------
     - name: Download Microsoft public key
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://packages.microsoft.com/keys/microsoft.asc"
         dest: /etc/apt/keyrings/microsoft.asc
         mode: "0644"
@@ -426,7 +441,12 @@
     # Dépôt Discord (PPA Javinator9889)
     # -------------------------------------------------------------------
     - name: Download Javinator9889 PPA public key
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0x08633B4AAAEB49FC"
         dest: /etc/apt/keyrings/javinator9889-ppa-keyring.asc
         mode: "0644"
@@ -450,7 +470,12 @@
     # Dépôt Spotify
     # -------------------------------------------------------------------
     - name: Download Spotify PPA public key
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc"
         dest: /etc/apt/keyrings/spotify-ppa-keyring.asc
         mode: "0644"
@@ -478,7 +503,12 @@
     # le fichier que s'il manque, ensuite c'est le paquet qui le maintient.
     # -------------------------------------------------------------------
     - name: Download Google public key
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://dl.google.com/linux/linux_signing_key.pub"
         dest: /etc/apt/keyrings/google-chrome.asc
         mode: "0644"
@@ -512,7 +542,12 @@
     # Jellyfin via script officiel (ajoute dépôt + installe jellyfin)
     # -------------------------------------------------------------------
     - name: Download Jellyfin install script
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: "https://repo.jellyfin.org/install-debuntu.sh"
         dest: /tmp/install-debuntu.sh
         mode: "0755"
@@ -573,7 +608,12 @@
         mode: "0755"
 
     - name: Download JDownloader2 install jar
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: https://installer.jdownloader.org/JDownloader.jar
         dest: /opt/jdownloader2/JDownloader.jar
         mode: "0644"
@@ -605,7 +645,12 @@
     # DroidCam (.deb officiel)
     # -------------------------------------------------------------------
     - name: Download DroidCam .deb
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: https://droidcam.app/go/droidCam.client.setup.deb
         dest: /tmp/droidcam_client_amd64.deb
         mode: "0644"
@@ -618,7 +663,12 @@
     # Minecraft launcher (.deb officiel)
     # -------------------------------------------------------------------
     - name: Download Minecraft launcher .deb
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: https://launcher.mojang.com/download/Minecraft.deb
         dest: /tmp/Minecraft.deb
         mode: "0644"
@@ -639,7 +689,12 @@
         mode: "0755"
 
     - name: Download Ankama Launcher AppImage (x86_64)
+      register: download
+      retries: 3
+      delay: 15
+      until: download is succeeded
       ansible.builtin.get_url:
+        timeout: 60
         url: " https://launcher.cdn.ankama.com/installers/production/Ankama%20Launcher-Setup-x86_64.AppImage"
         dest: /opt/ankama-launcher/Ankama-Launcher.AppImage
         mode: "0755"
@@ -683,7 +738,7 @@
       ansible.builtin.shell: |
         set -e
         if [ ! -d "{{ omz_home }}/.oh-my-zsh" ]; then
-          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+          sh -c "$(curl -fsSL --retry 3 --retry-delay 10 https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
         fi
       args:
         executable: /bin/bash
