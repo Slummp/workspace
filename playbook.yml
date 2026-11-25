@@ -119,6 +119,7 @@
       - synaptic
       - qbittorrent
       - sirikali
+      - libfuse2t64  # requis pour lancer les AppImage (Ankama)
       - pass
       - seahorse
 
@@ -723,7 +724,7 @@
       until: download is succeeded
       ansible.builtin.get_url:
         timeout: 60
-        url: " https://launcher.cdn.ankama.com/installers/production/Ankama%20Launcher-Setup-x86_64.AppImage"
+        url: "https://launcher.cdn.ankama.com/installers/production/Ankama%20Launcher-Setup-x86_64.AppImage"
         dest: /opt/ankama-launcher/Ankama-Launcher.AppImage
         mode: "0755"
 
