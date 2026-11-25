@@ -660,22 +660,50 @@
         deb: /tmp/droidcam_client_amd64.deb
 
     # -------------------------------------------------------------------
-    # Minecraft launcher (.deb officiel)
+    # Minecraft launcher (archive officielle .tar.gz)
+    # Le .deb officiel dépend de bibliothèques renommées ou retirées
+    # d'Ubuntu (libgdk-pixbuf2.0-0, libgcc1, lsb-base…) : apt refuse de
+    # l'installer. L'archive contient le même lanceur, sans dépendances
+    # déclarées (les bibliothèques sont déjà là sous leur nouveau nom).
     # -------------------------------------------------------------------
-    - name: Download Minecraft launcher .deb
+    - name: Download Minecraft launcher archive
       register: download
       retries: 3
       delay: 15
       until: download is succeeded
       ansible.builtin.get_url:
         timeout: 60
-        url: https://launcher.mojang.com/download/Minecraft.deb
-        dest: /tmp/Minecraft.deb
+        url: https://launcher.mojang.com/download/Minecraft.tar.gz
+        dest: /tmp/Minecraft.tar.gz
         mode: "0644"
 
-    - name: Install Minecraft launcher
-      ansible.builtin.apt:
-        deb: /tmp/Minecraft.deb
+    - name: Extract Minecraft launcher into /opt
+      ansible.builtin.unarchive:
+        src: /tmp/Minecraft.tar.gz
+        dest: /opt
+        remote_src: true
+        creates: /opt/minecraft-launcher/minecraft-launcher
+
+    - name: Create symlink in /usr/local/bin for minecraft-launcher
+      ansible.builtin.file:
+        src: /opt/minecraft-launcher/minecraft-launcher
+        dest: /usr/local/bin/minecraft-launcher
+        state: link
+
+    - name: Install Minecraft launcher .desktop entry
+      ansible.builtin.copy:
+        dest: /usr/share/applications/minecraft-launcher.desktop
+        mode: "0644"
+        content: |
+          [Desktop Entry]
+          Name=Minecraft Launcher
+          Comment=Official Minecraft Launcher
+          Exec=/usr/local/bin/minecraft-launcher
+          Icon=applications-games
+          Terminal=false
+          Type=Application
+          Categories=Game;
+          StartupWMClass=minecraft-launcher
 
     # -------------------------------------------------------------------
     # Ankama Launcher (AppImage)
