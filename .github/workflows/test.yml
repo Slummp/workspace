@@ -1,0 +1,37 @@
+name: Test Xubuntu
+
+# Lance le playbook complet dans un conteneur Xubuntu (dernière LTS), deux fois
+# de suite, sur une vraie machine Linux amd64.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # Chaque lundi : détecte un dépôt externe ou un paquet cassé même sans
+  # modification du repo, pour ne pas le découvrir le jour d'une install.
+  schedule:
+    - cron: "0 6 * * 1"
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playbook:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier la syntaxe de bootstrap.sh
+        run: bash -n bootstrap.sh
+
+      # Le playbook installe plusieurs Go : on libère de la place sur le runner.
+      - name: Libérer de l'espace disque
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h /
+
+      - name: Tester le playbook (dernière LTS)
+        run: tests/test.sh latest
