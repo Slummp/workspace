@@ -31,7 +31,7 @@
       - software-properties-common
       - apt-transport-https
       - htop
-      - neofetch
+      - fastfetch  # successeur de neofetch (abandonné, retiré d'Ubuntu)
       - tree
       - jq
       - yq
@@ -58,7 +58,7 @@
 
       # Docker / containers / node
       - docker.io
-      - docker-compose
+      - docker-compose-v2  # commande `docker compose` (la v1 n'existe plus)
       - containerd
       - nodejs
       - npm
