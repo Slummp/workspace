@@ -28,8 +28,22 @@ run() { docker exec -u xubuntu -w /home/xubuntu "$NAME" bash -c "$1"; }
 run "echo xubuntu | sudo -S -p '' apt-get update -qq && sudo apt-get install -y -qq git ansible >/dev/null"
 run "cp -r /src ~/workspace"
 
+LOG="$(mktemp)"
 for i in 1 2; do
     echo "===== Exécution $i ====="
+    set +e
     run "cd ~/workspace && ANSIBLE_FORCE_COLOR=0 ansible-playbook -i localhost, -c local playbook.yml \
-        -e omz_user=xubuntu -e ansible_become_password=xubuntu"
+        -e omz_user=xubuntu -e ansible_become_password=xubuntu" 2>&1 | tee "$LOG"
+    rc=${PIPESTATUS[0]}
+    set -e
+    if [ "$rc" -ne 0 ]; then
+        # Sur GitHub Actions : remonter chaque tâche en échec comme annotation,
+        # visible sur la page du run sans fouiller les logs.
+        if [ -n "${GITHUB_ACTIONS:-}" ]; then
+            awk -v run="$i" '/^TASK \[/ { t = $0; sub(/^TASK \[/, "", t); sub(/\].*$/, "", t) }
+                /^(fatal|failed):/ { printf "::error title=Exécution %s – %s::%s\n", run, t, substr($0, 1, 1500) }' "$LOG" || true
+        fi
+        echo "Échec à l'exécution $i (code $rc)" >&2
+        exit "$rc"
+    fi
 done

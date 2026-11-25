@@ -4,6 +4,13 @@
   become: yes
 
   vars:
+    # Depuis Ubuntu 25.10, `sudo` est sudo-rs : Ansible ne reconnaît pas son
+    # invite de mot de passe et abandonne ("Timed out waiting for become
+    # success or become password prompt"). On utilise le sudo classique,
+    # toujours livré sous le nom sudo.ws. (Connexion locale : le lookup
+    # regarde bien la machine cible.)
+    ansible_become_exe: "{{ 'sudo.ws' if lookup('ansible.builtin.fileglob', '/usr/bin/sudo.ws') else 'sudo' }}"
+
     # Utilisateur pour Oh My Zsh (override avec: -e omz_user=tonuser)
     omz_user: "{{ ansible_user_id }}"
     omz_home: "{{ (omz_user == 'root') | ternary('/root', '/home/' + omz_user) }}"
