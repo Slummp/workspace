@@ -144,6 +144,27 @@
         mode: "0755"
 
     # -------------------------------------------------------------------
+    # Nettoyage des anciens fichiers de dépôts VS Code / Chrome.
+    # Les anciennes versions de ce playbook et des paquets `code` /
+    # `google-chrome-stable` créaient des doublons avec des Signed-By
+    # différents, ce qui fait échouer `apt update` ("Conflicting values
+    # set for option Signed-By"). Doit passer AVANT le premier apt update.
+    # -------------------------------------------------------------------
+    - name: Remove legacy/duplicate VS Code and Chrome APT sources and keys
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/microsoft-ppa.list
+        - /etc/apt/sources.list.d/vscode.list
+        - /etc/apt/keyrings/microsoft-ppa-keyring.asc
+        - /etc/apt/keyrings/microsoft-ppa-keyring.gpg
+        - /etc/apt/sources.list.d/google-ppa.list
+        - /etc/apt/sources.list.d/google-chrome.list
+        - /etc/apt/keyrings/google-ppa-keyring.asc
+        - /etc/apt/keyrings/google-ppa-keyring.gpg
+
+    # -------------------------------------------------------------------
     # Pré-requis pour gérer les dépôts
     # -------------------------------------------------------------------
     - name: Install minimal prerequisites for external repositories
@@ -171,6 +192,9 @@
       ansible.builtin.command: snap list
       register: snap_list
       changed_when: false
+      # Si snapd est installé mais ne tourne pas, on ne peut pas lister :
+      # on saute la suppression snap par snap, le purge de snapd suffit.
+      failed_when: false
       when: snap_binary.stat.exists
 
     - name: Extraire les lignes de snaps (sans l'entête)
@@ -250,6 +274,9 @@
         state: stopped
         enabled: false
         masked: true
+      when:
+        - snap_binary.stat.exists
+        - ansible_service_mgr == 'systemd'
 
     - name: Purger complètement le paquet snapd
       ansible.builtin.apt:
@@ -358,28 +385,35 @@
           deb [arch=amd64 signed-by=/etc/apt/keyrings/agornostal-ppa-keyring.gpg] http://ppa.launchpad.net/agornostal/ulauncher/ubuntu {{ ansible_distribution_release }} main
 
     # -------------------------------------------------------------------
-    # Dépôt VSCode (PPA Microsoft)
+    # Dépôt VSCode (Microsoft)
+    # On utilise le même fichier et la même clé que le paquet `code` :
+    # son postinst détecte ce dépôt et n'en ajoute pas un second.
     # -------------------------------------------------------------------
-    - name: Download Microsoft PPA public key
+    - name: Download Microsoft public key
       ansible.builtin.get_url:
         url: "https://packages.microsoft.com/keys/microsoft.asc"
-        dest: /etc/apt/keyrings/microsoft-ppa-keyring.asc
+        dest: /etc/apt/keyrings/microsoft.asc
         mode: "0644"
 
     - name: Convert Microsoft key to GPG keyring
       ansible.builtin.command: >
         gpg --dearmor
-          -o /etc/apt/keyrings/microsoft-ppa-keyring.gpg
-          /etc/apt/keyrings/microsoft-ppa-keyring.asc
+          -o /usr/share/keyrings/microsoft.gpg
+          /etc/apt/keyrings/microsoft.asc
       args:
-        creates: /etc/apt/keyrings/microsoft-ppa-keyring.gpg
+        creates: /usr/share/keyrings/microsoft.gpg
 
-    - name: Add Microsoft APT repository
+    - name: Add Microsoft APT repository (VS Code)
       ansible.builtin.copy:
-        dest: /etc/apt/sources.list.d/microsoft-ppa.list
+        dest: /etc/apt/sources.list.d/vscode.sources
         mode: "0644"
         content: |
-          deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/microsoft-ppa-keyring.gpg] https://packages.microsoft.com/repos/code stable main
+          Types: deb
+          URIs: https://packages.microsoft.com/repos/code
+          Suites: stable
+          Components: main
+          Architectures: amd64 arm64
+          Signed-By: /usr/share/keyrings/microsoft.gpg
 
     # -------------------------------------------------------------------
     # Dépôt Discord (PPA Javinator9889)
@@ -430,28 +464,42 @@
           deb [arch=amd64 signed-by=/etc/apt/keyrings/spotify-ppa-keyring.gpg] https://repository.spotify.com stable non-free
 
     # -------------------------------------------------------------------
-    # Dépôt Google Chrome (PPA Google)
+    # Dépôt Google Chrome
+    # On écrit exactement le fichier et la clé que le paquet (postinst + cron
+    # quotidien /etc/cron.daily/google-chrome) gère lui-même : il les réécrit
+    # au même endroit au lieu d'ajouter un doublon. force: false = on ne crée
+    # le fichier que s'il manque, ensuite c'est le paquet qui le maintient.
     # -------------------------------------------------------------------
-    - name: Download Google PPA public key
+    - name: Download Google public key
       ansible.builtin.get_url:
         url: "https://dl.google.com/linux/linux_signing_key.pub"
-        dest: /etc/apt/keyrings/google-ppa-keyring.asc
+        dest: /etc/apt/keyrings/google-chrome.asc
         mode: "0644"
 
     - name: Convert Google key to GPG keyring
       ansible.builtin.command: >
         gpg --dearmor
-          -o /etc/apt/keyrings/google-ppa-keyring.gpg
-          /etc/apt/keyrings/google-ppa-keyring.asc
+          -o /usr/share/keyrings/google-chrome.gpg
+          /etc/apt/keyrings/google-chrome.asc
       args:
-        creates: /etc/apt/keyrings/google-ppa-keyring.gpg
+        creates: /usr/share/keyrings/google-chrome.gpg
 
-    - name: Add Google APT repository
+    - name: Add Google APT repository (Chrome)
       ansible.builtin.copy:
-        dest: /etc/apt/sources.list.d/google-ppa.list
+        dest: /etc/apt/sources.list.d/google-chrome.sources
         mode: "0644"
+        force: false
         content: |
-          deb [arch=amd64 signed-by=/etc/apt/keyrings/google-ppa-keyring.gpg] https://dl.google.com/linux/chrome/deb stable main
+          ### THIS FILE IS AUTOMATICALLY CONFIGURED ###
+          # Changes to this file will not be preserved.
+          # This file will not be recreated if removed.
+          X-Repolib-Name: Google Chrome
+          Types: deb
+          URIs: https://dl.google.com/linux/chrome-stable/deb/
+          Suites: stable
+          Components: main
+          Architectures: amd64
+          Signed-By: /usr/share/keyrings/google-chrome.gpg
 
     # -------------------------------------------------------------------
     # Jellyfin via script officiel (ajoute dépôt + installe jellyfin)
