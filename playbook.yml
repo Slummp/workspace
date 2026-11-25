@@ -500,9 +500,9 @@
     # -------------------------------------------------------------------
     # Ajouter l'utilisateur au groupe docker
     # -------------------------------------------------------------------
-    - name: Add current Ansible user to docker group
-      user:
-        name: "{{ ansible_user }}"
+    - name: Add {{ omz_user }} to docker group
+      ansible.builtin.user:
+        name: "{{ omz_user }}"
         groups: docker
         append: yes
 
@@ -622,10 +622,13 @@
     - name: Install Oh My Zsh for {{ omz_user }}
       become: yes
       become_user: "{{ omz_user }}"
+      environment:
+        RUNZSH: "no"
+        CHSH: "no"
       ansible.builtin.shell: |
         set -e
         if [ ! -d "{{ omz_home }}/.oh-my-zsh" ]; then
-          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+          sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
         fi
       args:
         executable: /bin/bash

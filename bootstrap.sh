@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "[BOOTSTRAP] Starting workstation bootstrap..."
+REPO_URL="https://github.com/Slummp/workspace.git"
+REPO_DIR="$HOME/workspace"
+
+echo "[BOOTSTRAP] Starting workspace bootstrap..."
 
 # -- Installer git + ansible (minimum vital) --
 echo "[BOOTSTRAP] Installing git & ansible..."
 sudo apt update
 sudo apt install -y git ansible
 
-# -- Cloner le repo workstation s'il n'existe pas déjà --
-if [ ! -d "$HOME/workstation" ]; then
-    echo "[BOOTSTRAP] Cloning workstation repo..."
-    git clone https://github.com/TONCOMPTE/workstation.git "$HOME/workstation"
-    cd "$HOME/workstation"
+# -- Cloner le repo s'il n'existe pas déjà, sinon le mettre à jour --
+if [ ! -d "$REPO_DIR/.git" ]; then
+    echo "[BOOTSTRAP] Cloning workspace repo..."
+    git clone "$REPO_URL" "$REPO_DIR"
 else
     echo "[BOOTSTRAP] Repo already exists, pulling latest..."
-    (cd "$HOME/workstation" && git pull --ff-only)
+    git -C "$REPO_DIR" pull --ff-only
 fi
 
-# -- Lancer l'installation Ansible --
-echo "[BOOTSTRAP] Running Ansible playbook..."
-ansible-playbook -i "localhost," -c local playbook.yml -e "omz_user=$USER"
+cd "$REPO_DIR"
 
-echo "[BOOTSTRAP] Done! Enjoy your freshly cloned workstation 😎"
+# -- Lancer l'installation Ansible --
+# --ask-become-pass : Ansible ne réutilise pas le cache sudo, il faut lui donner le mot de passe.
+echo "[BOOTSTRAP] Running Ansible playbook..."
+ansible-playbook -i "localhost," -c local playbook.yml \
+    --ask-become-pass \
+    -e "omz_user=$USER"
+
+echo "[BOOTSTRAP] Done! Enjoy your freshly cloned workspace 😎"
